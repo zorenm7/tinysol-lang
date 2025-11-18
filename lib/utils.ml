@@ -259,4 +259,3 @@ let print_sysstate_id (st : sysstate) : sysstate =
 let print_trace_and_return_last_sysstate tr = 
   let st = last_sysstate tr in
   tr |> string_of_trace |> print_string |> fun _ -> st
-

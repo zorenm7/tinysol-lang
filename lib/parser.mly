@@ -40,7 +40,6 @@ open Ast
 %token INT
 %token BOOL
 %token ADDR
-%token RECEIVESEP
 %token FIELDSEP
 %token THIS
 %token MSGSENDER
@@ -61,8 +60,8 @@ open Ast
 %left PLUS MINUS
 %left MUL
 
-%left SEQ
-%nonassoc ELSE DO
+%left CMDSEP (* bart: check *)
+%nonassoc ELSE
 
 %start <contract> contract
 %type <exprval> value

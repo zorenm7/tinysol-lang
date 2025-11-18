@@ -1,6 +1,5 @@
 open Ast
 open Types
-open Utils
 
 (******************************************************************************)
 (*                       Big-step semantics of expressions                    *)
@@ -261,8 +260,7 @@ let exec_tx (n_steps : int) (Tx(a,b,f,vl)) (st : sysstate) : sysstate =
           let xl' =  AddrVar "msg.sender" :: xl in
           let vl' = Addr a :: vl in
           let e' = bind_fargs_aargs xl' vl' in
-          let se' = e' :: st.stackenv in
-          let st' = { st with stackenv = se' } in
+          let st' = { st with stackenv = e' :: st.stackenv } in
           exec_cmd n_steps c b st'
           |> sysstate_of_exec_sysstate
           |> popenv)
@@ -273,28 +271,3 @@ let exec_tx_list (n_steps : int) (txl : transaction list) (st : sysstate) =
   (fun sti tx -> exec_tx n_steps tx sti)
   st
   txl
-
-
-(******************************************************************************)
-(*                                    Tinysol CLI                             *)
-(******************************************************************************)
-
-let exec_cli_cmd (cc : cli_cmd) (st : sysstate) : sysstate = match cc with
-  | Faucet(a,n) -> faucet a n st
-  | Deploy(a,filename) -> 
-      let c = filename |> read_file |> parse_contract 
-      in st |> deploy_contract a c
-  | ExecTx tx -> st |> exec_tx 1000 tx
-
-let string_of_cli_cmd = function 
-  | Faucet(a,n) -> "faucet " ^ a ^ " " ^ string_of_int n
-  | Deploy(a,filename) -> "deploy " ^ a ^ " " ^ filename
-  | ExecTx tx -> string_of_transaction tx
-
-let exec_cli_cmd_list (ccl : cli_cmd list) (st : sysstate) = 
-  List.fold_left 
-  (fun sti cc -> 
-    print_endline (string_of_sysstate [] sti ^ "\n--- " ^ string_of_cli_cmd cc ^ " --->"); 
-    exec_cli_cmd cc sti)
-  st
-  ccl
