@@ -100,12 +100,11 @@ let%test "test_trace_cmd_12" = test_trace_cmd
  - exp_vals: a list of expected values for the variables vars)
  ********************************************************************************)
 
-let test_exec_tx (c: string) (txl: string list) (vars : ide list) (exp_vals : exprval list) =
+let test_exec_tx (src: string) (txl: string list) (vars : ide list) (exp_vals : exprval list) =
   let txl = List.map parse_transaction txl in
-  c
-  |> parse_contract
-  |> fun c -> deploy_contract "0xC1" c init_sysstate
+  init_sysstate
   |> faucet "0xA" 100
+  |> deploy_contract { txsender="0xA"; txto="0xC1"; txfun="constructor"; txargs=[]; txvalue=0; } src 
   |> exec_tx_list 1000 txl 
   |> fun st -> List.map (fun x -> lookup_var "0xC1" x st) vars 
   |> fun vl -> vl = exp_vals

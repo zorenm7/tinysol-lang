@@ -9,8 +9,8 @@ open Main
 
 let string_of_cli_cmd = function 
   | Faucet(a,n) -> "faucet " ^ a ^ " " ^ string_of_int n
-  | Deploy(a,filename) -> "deploy " ^ a ^ " " ^ filename
-  | ExecTx tx -> string_of_transaction tx
+  | Deploy(tx,filename) -> "deploy " ^ string_of_transaction tx ^ " " ^ filename
+  | CallFun tx -> string_of_transaction tx
   | Assert(a,x,ev) -> "assert " ^ a ^ " " ^ x ^ " = " ^ string_of_exprval ev 
 
 let is_empty_or_comment (s : string) =
@@ -30,10 +30,10 @@ let is_assert = function
 
 let exec_cli_cmd (cc : cli_cmd) (st : sysstate) : sysstate = match cc with
   | Faucet(a,n) -> faucet a n st
-  | Deploy(a,filename) -> 
-      let c = filename |> read_file |> parse_contract 
-      in st |> deploy_contract a c
-  | ExecTx tx -> st |> exec_tx 1000 tx
+  | Deploy(tx,filename) -> 
+      let src = filename |> read_file 
+      in st |> deploy_contract tx src
+  | CallFun tx -> st |> exec_tx 1000 tx
   | Assert(a,x,ev) ->
       let v = 
         if x="balance" then Int(lookup_balance a st) 

@@ -69,8 +69,7 @@ and fun_decls = fun_decl list
 
 type contract = Contract of ide * var_decls * fun_decls
 
-(* tx = sender:contract.function(args) *)
-(* type transaction = Tx of addr * addr * ide * (exprval list) *)
+(* in a deploy transaction, the txfun is "constructor" and the first argument is the contract code *)
 
 type transaction = {
   txsender : addr;
@@ -86,6 +85,6 @@ type transaction = {
 
 type cli_cmd = 
   | Faucet of addr * int
-  | Deploy of addr * string
-  | ExecTx of transaction
+  | Deploy of transaction * string
+  | CallFun of transaction
   | Assert of addr * ide * exprval

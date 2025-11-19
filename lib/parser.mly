@@ -172,6 +172,13 @@ formal_arg:
 ;
 
 transaction:
+  | s = ADDRLIT; COLON; c = ADDRLIT; LPAREN; al = actual_args; RPAREN 
+  { { txsender = s;
+      txto = c;
+      txfun = "constructor";
+      txargs = al;
+      txvalue = 0;
+  } }
   | s = ADDRLIT; COLON; c = ADDRLIT; FIELDSEP; f = ID; LPAREN; al = actual_args; RPAREN 
   { { txsender = s;
       txto = c;
@@ -189,9 +196,9 @@ transaction:
 ;
 
 cli_cmd:
-  | tx = transaction { ExecTx tx }
+  | tx = transaction { CallFun tx }
   | FAUCET; a = ADDRLIT; n = CONST { Faucet(a, int_of_string n) }
-  | DEPLOY; a = ADDRLIT; filename = STRING { Deploy(a,filename) }
+  | DEPLOY; tx = transaction; filename = STRING { Deploy(tx,filename) }
   | ASSERT; a = ADDRLIT; x = ID;  ev = value { Assert(a,x,ev) }
   | ASSERT; a = ADDRLIT; BALANCE; ev = CONST { Assert(a,"balance",Int (int_of_string ev)) }
 ;

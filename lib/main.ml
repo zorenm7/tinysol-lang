@@ -218,39 +218,15 @@ let faucet (a : addr) (n : int) (st : sysstate) : sysstate =
 
 
 (******************************************************************************)
-(*                       Deploys a contract in a system state                 *)
-(******************************************************************************)
-
-(* TODO: we should execute constructor!! *)
-
-let find_constructor (Contract(_,_,fdl)) : fun_decl option =
-  List.fold_left 
-  (fun acc fd -> match fd with
-    | Constr(al,c,p) -> if acc <> None then acc else Some (Constr(al,c,p))
-    | _ -> acc)
-  None
-  fdl
-
-let deploy_contract (a : addr) (c : contract) (st : sysstate) : sysstate =
-  if exists_account st a then failwith ("deploy_contract: address " ^ a ^ " already bound in sysstate")
-  else
-    let as' = st.accounts |> bind a { balance=0; storage = init_storage c; code = Some c } in
-    match find_constructor c with
-    | None -> { st with accounts = as'; active = a::st.active }
-    | Some (Constr(_,_,_)) -> 
-      { st with accounts = as'; active = a::st.active }
-    | _ -> assert(false)
-
-
-(******************************************************************************)
 (* Executes steps of a transaction in a system state, returning a trace       *)
 (******************************************************************************)
 
 let find_fun (Contract(_,_,fdl)) (f : ide) : fun_decl option =
   List.fold_left 
-  (fun acc fd -> match fd with 
-    | Proc(g,al,c,v,p) -> if acc <> None || g<>f then acc else Some (Proc(g,al,c,v,p))
-    | _ -> acc)
+  (fun acc fd -> match fd with
+    | Constr(_) -> if acc=None && f="constructor" then Some fd else acc  
+    | Proc(g,_,_,_,_) -> if acc=None && f=g then Some fd else acc
+  )
   None
   fdl
 
@@ -266,40 +242,77 @@ let bind_fargs_aargs (xl : var_decl list) (vl : exprval list) : env =
    vl
 
 let exec_tx (n_steps : int) (tx: transaction) (st : sysstate) : sysstate =
-  if not (exists_account st tx.txsender) then 
-    failwith ("sender address " ^ tx.txsender ^ " does not exist") else
-  if not (exists_account st tx.txto) then match tx.txfun with
-    | "constructor" -> (match tx.txargs with 
-      Addr(code)::_ -> ( 
-        try let _ = parse_contract code in st
-        with _ -> failwith "exec_tx: calling constructor")
-      | _ -> failwith "exec_tx: the first parameter of a deploy transaction must be the contract code")
-    | _ -> failwith ("exec_tx: to address " ^ tx.txto ^ " does not exist") else
-  let new_sender_balance = (st.accounts tx.txsender).balance - tx.txvalue in
-  let new_sender_state = { (st.accounts tx.txsender) with balance = new_sender_balance } in
-  let new_to_balance = (st.accounts tx.txto).balance + tx.txvalue in
-  let new_to_state = { (st.accounts tx.txto) with balance = new_to_balance } in
-  match new_to_state.code with
+  if tx.txvalue < 0 then
+    failwith ("exec_tx: trying to send a negative amount of tokens")
+  else if not (exists_account st tx.txsender) then 
+    failwith ("exec_tx: sender address " ^ tx.txsender ^ " does not exist")
+  else if (st.accounts tx.txsender).balance < tx.txvalue then
+    failwith ("exec_tx: sender address " ^ tx.txsender ^ " has not sufficient balance")
+  else if not (exists_account st tx.txto) && tx.txfun <> "constructor" then
+    failwith ("exec_tx: to address " ^ tx.txto ^ " does not exist")
+  else if (exists_account st tx.txto) && tx.txfun = "constructor" then
+    failwith ("exec_tx: calling constructor in already deployed contract at address " ^ tx.txto) 
+  else 
+  let (sender_state : account_state) = 
+    { (st.accounts tx.txsender) with balance = (st.accounts tx.txsender).balance - tx.txvalue } in
+  let (to_state : account_state),(deploy : bool) = 
+    if exists_account st tx.txto 
+    then    { (st.accounts tx.txto) with balance = (st.accounts tx.txto).balance + tx.txvalue }, 
+            false (* deploy=false ==> cannot call constructor *) 
+    else (match tx.txargs with 
+      | Addr(code)::_ ->
+          (try let c = parse_contract code in 
+            { balance=tx.txvalue; storage = init_storage c; code = Some c }, 
+            true (* deploy=true ==> must call constructor *)
+          with _ -> failwith "exec_tx: syntax error in contract code")
+      | _ -> failwith "exec_tx: the first parameter of a deploy transaction must be the contract code") in
+  match to_state.code with
   | None -> failwith "Called address is not a contract"
   | Some src -> (match find_fun src tx.txfun with
-      | None -> failwith ("Contract at address " ^ tx.txto ^ " has no function named " ^ tx.txfun)
-      | Some (Proc(_,xl,c,_,_)) ->
-       (* TODO : if not payable, value = 0 *)
-          let xl' =  AddrVar "msg.sender" :: xl in
-          let vl' = Addr (tx.txsender) :: tx.txargs in
-          let e' = bind_fargs_aargs xl' vl' in
-          let st' = { st with
-            accounts = st.accounts 
-              |> bind tx.txsender new_sender_state
-              |> bind tx.txto new_to_state; 
-            stackenv = e' :: st.stackenv } in
-          exec_cmd n_steps c tx.txto st'
-          |> sysstate_of_exec_sysstate
-          |> popenv
-      | _ -> failwith "exec_tx: calling constructor on a deployed contract") 
+    | None when (not deploy) -> failwith ("Contract at address " ^ tx.txto ^ " has no function named " ^ tx.txfun)
+    | None -> { st with
+          accounts = st.accounts 
+            |> bind tx.txsender sender_state
+            |> bind tx.txto to_state; 
+          stackenv = st.stackenv }
+    | Some (Proc(_,xl,c,_,_))
+    | Some (Constr(xl,c,_)) ->
+     (* TODO : if not payable, value = 0 *)
+        let xl',vl' =
+          if deploy then match tx.txargs with 
+            _::al -> 
+            AddrVar "msg.sender" :: xl,
+            Addr (tx.txsender) :: al
+            | _ -> assert(false) (* should not happen *)
+          else
+            AddrVar "msg.sender" :: xl,
+            Addr (tx.txsender) :: tx.txargs
+        in
+        let e' = bind_fargs_aargs xl' vl' in
+        let st' = { st with
+          accounts = st.accounts 
+            |> bind tx.txsender sender_state
+            |> bind tx.txto to_state; 
+          stackenv = e' :: st.stackenv } in
+        exec_cmd n_steps c tx.txto st'
+        |> sysstate_of_exec_sysstate
+        |> popenv
+    ) 
 
 let exec_tx_list (n_steps : int) (txl : transaction list) (st : sysstate) = 
   List.fold_left 
   (fun sti tx -> exec_tx n_steps tx sti)
   st
   txl
+
+(******************************************************************************)
+(*                       Deploys a contract in a system state                 *)
+(******************************************************************************)
+
+let deploy_contract (tx : transaction) (src : string) (st : sysstate) : sysstate =
+  if exists_account st tx.txto then 
+    failwith ("deploy_contract: address " ^ tx.txto ^ " already bound in sysstate")
+  else if tx.txfun <> "constructor" then
+    failwith ("deploy_contract: deploying a contract must call the constructor")
+  else let tx' = { tx with txargs = Addr(src) :: tx.txargs }
+  in exec_tx 1000 tx' st
