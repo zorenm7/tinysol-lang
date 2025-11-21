@@ -422,3 +422,39 @@ let%test "test_typecheck_32" = test_typecheck
     function f(uint y) public { require int(y)+x < 7; y = uint(x) + 1; }
 }"
 true
+
+let%test "test_typecheck_33" = test_typecheck 
+"contract C {
+    int x;
+    int x;
+    function f(int y) public { require x+y < 7; }
+}"
+false
+
+let%test "test_typecheck_34" = test_typecheck 
+"contract C {
+    int x;
+    function f(int y) public { require x+y < 7; }
+    function g(bool b) public { require b; }
+    function h(address a) public { }
+    function f(bool b) public { require b; }
+}"
+false
+
+let%test "test_typecheck_35" = test_typecheck 
+"contract C {
+    int x;
+    function f(int y) public { require x+y < 7; }
+    function g(bool b) public { require b; }
+    function h(address a) public { }
+}"
+true
+
+let%test "test_typecheck_36" = test_typecheck 
+"contract C {
+    int x;
+    constructor(int y) { x=y; }
+    function g(bool b) public { require b; }
+    constructor() { x=1; }
+}"
+false

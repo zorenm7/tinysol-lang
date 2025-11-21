@@ -9,8 +9,9 @@ type exprtype =
   | AddrT
 
 (* TypeError(expression, inferred type, expected type) *)
-exception TypeError of expr * exprtype * exprtype;;
-exception UndeclaredVar of ide;;
+exception TypeError of expr * exprtype * exprtype
+exception UndeclaredVar of ide
+exception MultipleDecl of ide
 
 let lookup_type (x : ide) (vdl : var_decl list) : exprtype option =
   if x="msg.sender" then Some AddrT
@@ -26,6 +27,24 @@ let lookup_type (x : ide) (vdl : var_decl list) : exprtype option =
   None
 
 let merge_var_decls old_vdl new_vdl = new_vdl @ old_vdl  
+
+let rec dup = function 
+  | [] -> None
+  | x::l -> if List.mem x l then Some x else dup l
+
+let no_dup_var_decls vdl = 
+  vdl 
+  |> List.map (fun vd -> match vd with IntVar x | UintVar x | BoolVar x | AddrVar x -> x) 
+  |> dup
+  |> fun res -> match res with None -> true | Some x -> raise (MultipleDecl x)  
+
+let no_dup_fun_decls vdl = 
+  vdl 
+  |> List.map (fun fd -> match fd with 
+    | Constr(_) -> "constructor"
+    | Proc(f,_,_,_,_) -> f) 
+  |> dup
+  |> fun res -> match res with None -> true | Some x -> raise (MultipleDecl x)  
 
 let subtype t0 t1 = match t1 with
   | UintConstT -> t0 = t1
@@ -130,6 +149,12 @@ let typecheck_fun (vdl : var_decl list) = function
   | Proc (_,al,c,_,__) -> typecheck_cmd (merge_var_decls vdl al) c
 
 let typecheck_contract (Contract(_,vdl,fdl)) =
+  (* no multiply declared variables *)
+  no_dup_var_decls vdl
+  &&
+  (* no multiply declared functions *)
+  no_dup_fun_decls fdl
+  &&
   List.fold_left 
   (fun acc fd -> acc && typecheck_fun vdl fd)
   true
