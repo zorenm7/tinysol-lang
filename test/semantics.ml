@@ -11,7 +11,7 @@ let test_exec_cmd (c,n_steps,var,exp_val) =
   c
   |> parse_cmd
   |> blockify_cmd
-  |> fun c -> last (trace_cmd n_steps c (push_callstack {callee="0xC"; locals=[];} init_sysstate))
+  |> fun c -> exec_cmd n_steps c (push_callstack {callee="0xC"; locals=[];} init_sysstate)
   |> fun t -> match t with
   | St st -> Option.get (lookup_var var st) = exp_val
   | CmdSt(_,st) -> Option.get (lookup_var var st) = exp_val
@@ -200,7 +200,7 @@ let%test "test_exec_tx_11" = test_exec_tx
   ["x==2"]
 
 
-let%test "test_map_1" = test_exec_tx
+let%test "test_mapping_1" = test_exec_tx
   "contract C {
       mapping (uint => uint) m;
       uint x;
@@ -209,7 +209,16 @@ let%test "test_map_1" = test_exec_tx
   ["0xA:0xC.g(0)"] 
   ["x==1"]
 
-let%test "test_map_2" = test_exec_tx
+let%test "test_mapping_2" = test_exec_tx
+  "contract C {
+      mapping (address => uint) m;
+      uint x;
+      function f(address a, uint n) public { m[a] = n; }
+  }"
+  ["0xA:0xC.f(\"0xA\",1)"; "0xA:0xC.f(\"0xB\",2)"; "0xA:0xC.f(\"0xA\",3)"] 
+  ["m[\"0xA\"]==3"; "m[\"0xB\"]==2"]
+
+let%test "test_mapping_3" = test_exec_tx
   "contract C {
       mapping (uint => uint) m;
       uint x;
@@ -218,6 +227,24 @@ let%test "test_map_2" = test_exec_tx
   }"
   ["0xA:0xC.f(0,1)"; "0xA:0xC.g(0)"] 
   ["x==1"]
+
+let%test "test_mapping_4" = test_exec_tx
+  "contract C {
+      mapping (uint => uint) m1;
+      mapping (uint => uint) m2;
+      function f(int k, int v) public { m1[k] = v; }
+      function g(int k, int v) public { m2[m1[k]] = m1[m2[0]+v]; }
+  }"
+  ["0xA:0xC.f(1,2)"; "0xA:0xC.g(1,1)"] 
+  ["m2[2]==2"]
+
+let%test "test_mapping_5" = test_exec_tx
+  "contract C {
+      mapping (uint => uint) m;
+      function f(int k) public { m[m[k]] = m[k]+1; }
+  }"
+  ["0xA:0xC.f(0)"; "0xA:0xC.f(0)"] 
+  ["m[0]==1"; "m[1]==2"]
 
 let%test "test_enum_1" = test_exec_tx
   "contract C { enum State {IDLE,REQ} State s; function f() public { s = State.REQ; } }"
@@ -506,10 +533,21 @@ let%test "test_fun_14" = test_exec_fun
 
 let%test "test_fun_15" = test_exec_fun
   "contract C { 
-      function fact(int n) public { return (n==0) ? 1 : (n * this.fact(n-1)); } 
+      function fact(int n) public returns(uint) { return (n==0) ? 1 : (n * this.fact(n-1)); } 
   }"
   "contract D { C c; uint y; constructor() payable { c = \"0xC\"; } 
       function g(int x) public { y = c.fact(x); }
   }"
   ["0xA:0xD.g(4)"] 
   [("0xD","y==24")]
+
+let%test "test_fun_16" = test_exec_fun
+  "contract C { D d; constructor() payable { d = \"0xD\"; } 
+      function f(int x) public returns(uint) { return 1 + (x==0) ? 0 : d.g(x-1); } 
+  }"
+  "contract D { C c; uint y; constructor() payable { c = \"0xC\"; } 
+      function g(int x) public returns(uint) { if (x==0) return 0; else return 1 + c.f(x-1); }
+      function h(int x) public { y = this.g(x); }
+  }"
+  ["0xA:0xD.h(3)"] 
+  [("0xD","y==4")]

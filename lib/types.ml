@@ -204,7 +204,7 @@ let update_var (st : sysstate) (x : ide) (v : exprval) : sysstate =
 
 
 let update_map (st : sysstate) (x:ide) (k:exprval) (v:exprval) : sysstate = 
-  let a = addr_of_exprval (Option.get(lookup_var "this" st)) in 
+  let a = (List.hd st.callstack).callee in 
   let cs = st.accounts a in
     if exists_ide_in_storage cs x then 
       match cs.storage x with

@@ -260,11 +260,11 @@ let rec step_expr (e,st) = match e with
     let to_state  = 
       { (st.accounts txto) with balance = (st.accounts txto).balance + txvalue } in 
     let fdecl = Option.get (find_fun_in_sysstate st txto f) in  
-    (* setup new stack frame TODO *)
+    (* setup new callstack frame *)
     let xl = get_var_decls_from_fun fdecl in
     let xl',vl' =
-      (VarT(AddrBT false,true),"this") :: (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
-      Addr txto :: Addr txfrom :: Int txvalue :: txargs
+      (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
+      Addr txfrom :: Int txvalue :: txargs
     in
     let fr' = { callee = txto; locals = [bind_fargs_aargs xl' vl'] } in 
     let st' = { accounts = st.accounts 
@@ -414,8 +414,8 @@ and step_cmd = function
         (* setup new stack frame TODO *)
         let xl = get_var_decls_from_fun fdecl in
         let xl',vl' =
-          (VarT(AddrBT false,true),"this") :: (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
-          Addr txto :: Addr txfrom :: Int txvalue :: txargs
+          (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
+          Addr txfrom :: Int txvalue :: txargs
         in
         let fr' = { callee = txto; locals = [bind_fargs_aargs xl' vl'] } in
         let st' = { accounts = st.accounts 
@@ -557,12 +557,12 @@ let exec_tx (n_steps : int) (tx: transaction) (st : sysstate) : sysstate =
         let xl',vl' =
           if deploy then match tx.txargs with 
             _::al -> 
-            (VarT(AddrBT false,true),"this") :: (VarT(AddrBT false,false),"msg.sender") :: xl,
-            Addr tx.txto :: Addr tx.txsender :: al (* TODO: why null value?? *)
+            (VarT(AddrBT false,false),"msg.sender") :: xl,
+            Addr tx.txsender :: al (* TODO: why null value?? *)
             | _ -> assert(false) (* should not happen *)
           else
-            (VarT(AddrBT false,true),"this") :: (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
-            Addr tx.txto :: Addr tx.txsender :: Int tx.txvalue :: tx.txargs
+            (VarT(AddrBT false,false),"msg.sender") :: (VarT(IntBT,false),"msg.value") :: xl,
+            Addr tx.txsender :: Int tx.txvalue :: tx.txargs
         in
         let fr' = { callee = tx.txto; locals = [bind_fargs_aargs xl' vl'] } in
         let st' = { accounts = st.accounts 
