@@ -29,7 +29,7 @@ let exprval_of_expr_typechecked (e : expr) (t : base_type)= match e,t with
   | IntVal n,     IntBT             -> Int n
   | UintVal n,    UintBT            -> Uint n
   | AddrConst s,  AddrBT _          -> Addr s
-  | AddrConst s,  CustomBT _        -> Addr s
+  | AddrConst s,  ContractBT _      -> Addr s
   | _ -> failwith ("type mismatch")
 
 let val_type_match (e : expr) (v : exprval) = match e,v with  
@@ -184,14 +184,15 @@ let blockify_contract (Contract(c,el,vdl,fdl)) =
   Contract(c,el,vdl,List.map blockify_fun fdl)
 
 (******************************************************************************)
-(*                    Transform custom types into enum types                  *)
+(*            Transform unknown types into enum or contract types             *)
 (******************************************************************************)
 
 let exists_enum (enums : enum_decl list) (name : ide) = 
   List.exists (fun (Enum(x,_)) -> x=name) enums
 
 let enumify_base_type (enums : enum_decl list) (bt : base_type) : base_type = match bt with
-  | CustomBT en when exists_enum enums en -> EnumBT en
+  | UnknownBT en when exists_enum enums en -> EnumBT en
+  | UnknownBT en                           -> ContractBT en
   | _ as other -> other
 
 let enumify_decls (enums : enum_decl list) (vdl : var_decl list) : var_decl list = List.map (
@@ -207,6 +208,8 @@ let enumify_local_decls (enums : enum_decl list) (vdl : local_var_decl list) : l
     | MapT(bt1,bt2) -> { vd with ty = MapT(enumify_base_type enums bt1, enumify_base_type enums bt2) }
   ) 
   vdl 
+
+(* TODO: transform UnknownCast into EnumCast or ContractCast *)
 
 let rec enumify_cmd enums = function
   | Block(vdl,c) -> Block(enumify_local_decls enums vdl, enumify_cmd enums c) 

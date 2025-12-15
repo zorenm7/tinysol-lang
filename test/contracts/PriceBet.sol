@@ -37,8 +37,9 @@ contract PriceBet {
         require(msg.sender == player);
 
         // Warning: at deployment time, we cannot know for sure that address oracle actually contains a deployment of contract Oracle
-        // ***TODO***: type cast to arbitrary type: Oracle oracle_instance = Oracle(oracle);
-        require(oracle_instance.get_exchange_rate() >= exchange_rate);
+        Oracle oracle_instance;
+        oracle_instance = Oracle(oracle);
+        // require(oracle_instance.get_exchange_rate() >= exchange_rate);
 
         player.transfer(address(this).balance);
     }

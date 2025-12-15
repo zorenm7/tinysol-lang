@@ -315,7 +315,7 @@ and step_cmd = function
       let (e', st') = step_expr (e, st) in CmdSt(Assign(x,e'), st')
 
     | Decons(_) -> failwith "TODO: multiple return values"
-    
+
     | MapW(x,ek,ev) when is_val ek && is_val ev ->
         St (update_map st x (exprval_of_expr ek) (exprval_of_expr ev))
     | MapW(x,ek,ev) when is_val ek -> 
@@ -375,12 +375,13 @@ and step_cmd = function
     | Block(vdl,c) ->
         let r' = List.fold_left (fun acc vd ->
           match vd.ty with
-            | VarT(IntBT)  -> acc       |> bind vd.name (Int 0) 
-            | VarT(UintBT) -> acc       |> bind vd.name (Uint 0)
-            | VarT(BoolBT) -> acc       |> bind vd.name (Bool false)
-            | VarT(AddrBT _) -> acc     |> bind vd.name (Addr "0")
-            | VarT(EnumBT _) -> acc     |> bind vd.name (Uint 0)
-            | VarT(CustomBT _) -> acc   |> bind vd.name (Addr "0") (* TODO: contract?? *)
+            | VarT(IntBT)        -> acc |> bind vd.name (Int 0) 
+            | VarT(UintBT)       -> acc |> bind vd.name (Uint 0)
+            | VarT(BoolBT)       -> acc |> bind vd.name (Bool false)
+            | VarT(AddrBT _)     -> acc |> bind vd.name (Addr "0")
+            | VarT(EnumBT _)     -> acc |> bind vd.name (Uint 0)
+            | VarT(ContractBT _) -> acc |> bind vd.name (Addr "0")
+            | VarT(UnknownBT _)  -> assert(false) (* should not happen after preprocessing *)
             | MapT(_) -> failwith "mappings cannot be used in local declarations" 
         ) botenv vdl in
         let fr,frl = (List.hd st.callstack),(List.tl st.callstack) in
@@ -457,8 +458,9 @@ let default_var_value = function
 | UintBT      -> Uint 0
 | BoolBT      -> Bool false
 | AddrBT _    -> Addr "0"
-| CustomBT _  -> Addr "0"
+| UnknownBT _ -> assert(false) (* should not happen after contract preprocessing *)
 | EnumBT _    -> Uint 0
+| ContractBT _-> Addr "0"
 
 (* initialized the contract storage upon deployment *)
 let init_storage (Contract(_,_,vdl,_)) : ide -> exprval =

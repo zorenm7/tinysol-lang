@@ -20,11 +20,11 @@ match Array.length(Sys.argv) with
     | _ -> print_newline())
 (* parse_contract *) 
 | 2 when Sys.argv.(1)="parse" -> (match read_line() with
-    | Some s when s<>"" -> s |> parse_contract |> string_of_contract |> print_string
+    | Some s when s<>"" -> s |> parse_contract |> preprocess_contract |> string_of_contract |> print_string
     | _ -> print_newline())
 | 3 when Sys.argv.(1)="parse" -> (match read_file Sys.argv.(2) with
       "" -> print_newline()
-    | s -> s |> parse_contract |> string_of_contract |> print_string)
+    | s -> s |> parse_contract |> preprocess_contract |> string_of_contract |> print_string)
 (* typecheck contract*)
 | 2 when Sys.argv.(1)="typecheck" -> (match read_line() with
     | Some s when s<>"" -> s |> parse_contract |> preprocess_contract |> typecheck_contract 

@@ -13,8 +13,8 @@ type exprtype =
   | IntET
   | UintET
   | AddrET of bool
-  | CustomET of ide
   | EnumET of ide
+  | ContractET of ide
   | MapET of exprtype * exprtype
 
 let rec string_of_exprtype = function
@@ -24,8 +24,8 @@ let rec string_of_exprtype = function
   | IntET           -> "int"
   | UintET          -> "uint"
   | AddrET p        -> "address" ^ (if p then " payable" else "")
-  | CustomET x      -> x
   | EnumET x        -> x
+  | ContractET x    -> x
   | MapET(t1,t2)    -> string_of_exprtype t1 ^ " => " ^ string_of_exprtype t2
 
 (* the result of the contract typechecker is either:
@@ -93,13 +93,13 @@ let string_of_typecheck_error = function
 | ex -> Printexc.to_string ex
 
 let exprtype_of_decltype = function
-  | IntBT  -> IntET
-  | UintBT -> UintET
-  | BoolBT -> BoolET
-  | AddrBT(b)  -> AddrET(b)
-  | EnumBT _   -> UintET
-  | CustomBT _ -> UintET (* TODO: be more precise? *)
-
+  | IntBT         -> IntET
+  | UintBT        -> UintET
+  | BoolBT        -> BoolET
+  | AddrBT(b)     -> AddrET(b)
+  | EnumBT _      -> UintET
+  | ContractBT _  -> AddrET(false) (* check false *)
+  | UnknownBT _   -> assert(false) (* should not happen after preprocessing *)
 
 (* typechecker functions take as input the list of variable declarations:
   - var_decl:       state variables 
@@ -177,6 +177,7 @@ let subtype t0 t1 = match t1 with
   | IntConstET _ -> (match t0 with IntConstET _ -> true | _ -> false)
   | UintET -> (match t0 with IntConstET n when n>=0 -> true | UintET -> true | _ -> false)
   | IntET -> (match t0 with IntConstET _ | IntET -> true | _ -> false) (* uint is not convertible to int *)
+  | AddrET _ -> (match t0 with AddrET _ -> true | _ -> false)
   | _ -> t0 = t1
 
 let rec typecheck_expr (edl : enum_decl list) vdl = function
@@ -264,6 +265,7 @@ let rec typecheck_expr (edl : enum_decl list) vdl = function
      | Ok(t1),Ok(t2) when t1=t2-> Ok(BoolET)
      | Ok(t1),Ok(t2) when subtype t1 UintET && subtype t2 UintET -> Ok(BoolET)
      | Ok(t1),Ok(t2) when subtype t1 IntET && subtype t2 IntET -> Ok(BoolET)
+     | Ok(t1),Ok(t2) when subtype t1 t2 && subtype t2 t1 -> Ok(BoolET) (* AddrET _ *)
      | Ok(t1),Ok(t2) -> Error [TypeError (e2,t2,t1)]
      | err1,err2 -> err1 >>+ err2)
 
@@ -273,6 +275,7 @@ let rec typecheck_expr (edl : enum_decl list) vdl = function
      | Ok(t1),Ok(t2) when t1=t2-> Ok(BoolET)
      | Ok(t1),Ok(t2) when subtype t1 UintET && subtype t2 UintET -> Ok(BoolET)
      | Ok(t1),Ok(t2) when subtype t1 IntET && subtype t2 IntET -> Ok(BoolET)
+     | Ok(t1),Ok(t2) when subtype t1 t2 && subtype t2 t1 -> Ok(BoolET) (* AddrET _ *)
      | Ok(t1),Ok(t2) -> Error [TypeError (e2,t2,t1)]
      | err1,err2 -> err1 >>+ err2)
 
@@ -362,6 +365,12 @@ let rec typecheck_expr (edl : enum_decl list) vdl = function
       | Ok(t) -> Error [TypeError (e,t,IntET)]
       | err -> err)
 
+  | ContractCast(x,e) -> (match typecheck_expr edl vdl e with
+      | Ok(AddrET _) -> Ok(ContractET x)
+      | Ok(t) -> Error [TypeError (e,t,AddrET(false))]
+      | err -> err)
+
+  | UnknownCast(_) -> assert(false) (* should not happen after preprocessing *)
   | FunCall(_) -> failwith "TODO: FunCall"
 
   | ExecFunCall(_) -> assert(false) (* this should not happen at static time *)
@@ -389,7 +398,7 @@ let rec typecheck_cmd (is_constr : bool) (edl : enum_decl list) (vdl : all_var_d
         )
 
     | Decons(_) -> failwith "TODO: multiple return values"
-    
+
     | MapW(x,ek,ev) ->  
         (match typecheck_expr edl vdl (Var x),
                typecheck_expr edl vdl ek,

@@ -39,7 +39,9 @@ type expr =
   | AddrCast of expr
   | PayableCast of expr
   | EnumOpt of ide * ide
+  | UnknownCast of ide * expr
   | EnumCast of ide * expr
+  | ContractCast of ide * expr
   | FunCall of expr * ide * expr * expr list
   | ExecFunCall of cmd
   
@@ -64,12 +66,13 @@ and cmd =
 (* Base types *)
 
 and base_type = 
-  | IntBT           (* int *)
-  | UintBT          (* uint *) 
-  | BoolBT          (* bool *)
-  | AddrBT of bool  (* address (the bool b in AddrBT(b) tells if the address is payable (b=1) or not (b=0) *)
-  | CustomBT of ide (* custom type: specialized after preprocessing in EnumBT of ContractBT *)
+  | IntBT            (* int *)
+  | UintBT           (* uint *) 
+  | BoolBT           (* bool *)
+  | AddrBT of bool   (* address (the bool b in AddrBT(b) tells if the address is payable (b=1) or not (b=0) *)
+  | UnknownBT of ide (* unknown type: specialized by preprocess_contract in EnumBT of ContractBT *)
   | EnumBT of ide
+  | ContractBT of ide
 
 (* Variable types, consisting of:
   - a base type, or

@@ -227,12 +227,12 @@ opt_init_value:
   
 var_decl:
   | t = var_type; v_i = opt_var_modifiers; x = ID; iv = opt_init_value { { ty = t; name = x; visibility = fst v_i; mutability = snd v_i; init_value = iv } }
-  | t = ID; v_i = opt_var_modifiers; x = ID { { ty = VarT(CustomBT(t)); name = x; visibility = fst v_i; mutability = snd v_i; init_value = None } }
+  | t = ID; v_i = opt_var_modifiers; x = ID { { ty = VarT(UnknownBT(t)); name = x; visibility = fst v_i; mutability = snd v_i; init_value = None } }
 ;
 
 local_var_decl:
   | t = var_type; x = ID { { ty = t; name = x; } }
-  | t = ID; x = ID { { ty = VarT(CustomBT(t)); name = x; } }
+  | t = ID; x = ID { { ty = VarT(UnknownBT(t)); name = x; } }
 ;
 
 opt_id_decons:

@@ -38,7 +38,9 @@ let rec vars_of_expr = function
   | Geq(e1,e2) 
   | Gt(e1,e2) -> union (vars_of_expr e1) (vars_of_expr e2)                    
   | IfE(e1,e2,e3) -> union (vars_of_expr e1) (union (vars_of_expr e2) (vars_of_expr e3))
+  | UnknownCast(_) -> assert(false) (* should not happen after preprocessing *)
   | EnumCast(x,e) ->  union [x] (vars_of_expr e)
+  | ContractCast(x,e) ->  union [x] (vars_of_expr e)
   | FunCall(e_to,_,e_value,e_args) -> union (vars_of_expr e_to) (union (vars_of_expr e_value) 
     (List.fold_left (fun acc ea -> union acc (vars_of_expr ea)) [] e_args))
   | ExecFunCall(c) ->  vars_of_cmd c
@@ -133,7 +135,9 @@ let rec string_of_expr = function
   | AddrCast(e) -> "address(" ^ string_of_expr e ^ ")"
   | PayableCast(e) -> "payable(" ^ string_of_expr e ^ ")"
   | EnumOpt(x,o) -> x ^ "." ^ o
+  | UnknownCast(_) -> assert(false) (* should not happen after preprocessing *)
   | EnumCast(x,e) -> x ^ "(" ^ string_of_expr e ^ ")"
+  | ContractCast(x,e) -> x ^ "(" ^ string_of_expr e ^ ")"
   | FunCall(e_to,f,e_value,e_args) -> string_of_expr e_to ^ "." ^ f ^ 
     "{value:" ^ string_of_expr e_value ^ "}" ^
     "(" ^ (List.fold_left (fun acc ea -> acc ^ (if acc="" then "" else ",") ^ string_of_expr ea) "" e_args) ^ ")"
@@ -175,12 +179,13 @@ and string_of_cmd = function
     ^ "}"
 
 and string_of_base_type = function
-| IntBT  -> "int"
-| UintBT -> "uint"
-| BoolBT -> "bool"
-| AddrBT p -> "address" ^ (if p then " payable" else "")
-| CustomBT x -> x
-| EnumBT x -> x
+| IntBT         -> "int"
+| UintBT        -> "uint"
+| BoolBT        -> "bool"
+| AddrBT p      -> "address" ^ (if p then " payable" else "")
+| EnumBT x      -> x
+| ContractBT x  -> "<contract>" ^ x
+| UnknownBT _   -> assert(false) (* should not happen after preprocessing *)
 
 and string_of_var_type = function
 | VarT(t) -> string_of_base_type t

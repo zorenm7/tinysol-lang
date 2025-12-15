@@ -201,3 +201,15 @@ let%test "test_parse_contract_23" = test_parse
     function g() public { int y; (y,) = this.f(); }
   }"
   true
+
+let%test "test_parse_contract_24" = test_parse
+  "contract C { enum E {A, B} address c;
+    function f() public { D d; d = D(c); }
+  }"
+  true
+
+let%test "test_parse_contract_25" = test_parse
+  "contract C { enum E {A, B} address c;
+    function f() public { require(true); D d; d = D(c); }
+  }"
+  true
