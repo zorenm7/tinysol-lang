@@ -21,7 +21,7 @@ contract Crowdfund {
     function withdraw() public {
         require (block.number > end_donate);
         require (address(this).balance >= goal);
-        owner.transfer(address(this).balance);
+        payable(owner).transfer(address(this).balance);
     }
 
     function reclaim() public { 
@@ -32,6 +32,6 @@ contract Crowdfund {
 
         amount = donors[msg.sender];
         donors[msg.sender] = 0;
-        msg.sender.transfer(amount);
+        payable(msg.sender).transfer(amount);
     }
 }

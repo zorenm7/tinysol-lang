@@ -66,13 +66,13 @@ and cmd =
 (* Base types *)
 
 and base_type = 
-  | IntBT            (* int *)
-  | UintBT           (* uint *) 
-  | BoolBT           (* bool *)
-  | AddrBT of bool   (* address (the bool b in AddrBT(b) tells if the address is payable (b=1) or not (b=0) *)
-  | UnknownBT of ide (* unknown type: specialized by preprocess_contract in EnumBT of ContractBT *)
-  | EnumBT of ide
-  | ContractBT of ide
+  | IntBT             (* int *)
+  | UintBT            (* uint *) 
+  | BoolBT            (* bool *)
+  | AddrBT of bool    (* address (the bool b in AddrBT(b) tells if the address is payable (b=1) or not (b=0) *)
+  | UnknownBT of ide  (* unknown type: specialized by preprocess_contract in EnumBT of ContractBT *)
+  | EnumBT of ide     (* enum *)
+  | ContractBT of ide (* contract *)
 
 (* Variable types, consisting of:
   - a base type, or
