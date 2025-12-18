@@ -31,6 +31,7 @@ let rec vars_of_expr = function
   | Add(e1,e2)
   | Sub(e1,e2)
   | Mul(e1,e2) 
+  | Div(e1,e2)
   | Eq(e1,e2) 
   | Neq(e1,e2) 
   | Leq(e1,e2) 
@@ -123,6 +124,7 @@ let rec string_of_expr = function
   | Add(e1,e2) -> string_of_expr e1 ^ "+" ^ string_of_expr e2
   | Sub(e1,e2) -> string_of_expr e1 ^ "-" ^ string_of_expr e2
   | Mul(e1,e2) -> string_of_expr e1 ^ "*" ^ string_of_expr e2
+  | Div(e1,e2) -> string_of_expr e1 ^ "/" ^ string_of_expr e2
   | Eq(e1,e2) -> string_of_expr e1 ^ "==" ^ string_of_expr e2
   | Neq(e1,e2) -> string_of_expr e1 ^ "!=" ^ string_of_expr e2
   | Leq(e1,e2) -> string_of_expr e1 ^ "<=" ^ string_of_expr e2

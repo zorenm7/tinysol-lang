@@ -403,6 +403,7 @@ let rec resolve_unknown_expr enums = function
   | Add(e1,e2) -> Add(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
   | Sub(e1,e2) -> Sub(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
   | Mul(e1,e2) -> Mul(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
+  | Div(e1,e2) -> Div(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
   | Eq(e1,e2) -> Eq(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
   | Neq(e1,e2) -> Neq(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)
   | Leq(e1,e2) -> Leq(resolve_unknown_expr enums e1,resolve_unknown_expr enums e2)

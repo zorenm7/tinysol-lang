@@ -27,6 +27,7 @@ type expr =
   | Add of expr * expr
   | Sub of expr * expr
   | Mul of expr * expr
+  | Div of expr * expr
   | Eq of expr * expr
   | Neq of expr * expr
   | Leq of expr * expr

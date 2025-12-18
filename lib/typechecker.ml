@@ -264,6 +264,8 @@ let rec typecheck_expr (f : ide) (edl : enum_decl list) vdl = function
      | _,Ok(t2) -> Error [TypeError (f,e2,t2,IntET)]
      | err1,err2 -> err1 >>+ err2)
 
+  | Div(_) -> failwith "Div: TODO"
+
   | Eq(e1,e2) ->
     (match (typecheck_expr f edl vdl e1,typecheck_expr f edl vdl e2) with
      | Ok(IntConstET n1),Ok(IntConstET n2) -> Ok(BoolConstET (n1 = n2))

@@ -11,6 +11,7 @@ open Cli_ast
 %token PLUS
 %token MINUS
 %token MUL
+%token DIV
 %token EQ
 %token NEQ
 %token LEQ
@@ -89,7 +90,8 @@ open Cli_ast
 %nonassoc EQ NEQ LEQ GEQ LT GT
 %left PLUS MINUS
 %nonassoc UMINUS
-%left MUL
+%left DIV MUL
+
 
 %left CMDSEP
 %nonassoc ELSE
@@ -167,6 +169,7 @@ expr:
   | e1=expr; PLUS; e2=expr { Add(e1,e2) }
   | e1=expr; MINUS; e2=expr { Sub(e1,e2) }
   | e1=expr; MUL; e2=expr { Mul(e1,e2) }
+  | e1=expr; DIV; e2=expr { Div(e1,e2) }
   | e1=expr; EQ; e2=expr { Eq(e1,e2) }
   | e1=expr; NEQ; e2=expr { Neq(e1,e2) }
   | e1=expr; LEQ; e2=expr { Leq(e1,e2) }

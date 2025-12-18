@@ -67,6 +67,22 @@ let%test "test_parse_cmd_11" = test_parse_cmd
   "x = (true)?0:(false)?0:1;"
   (Assign ("x", IfE (BoolConst true, IntConst 0, IfE (BoolConst false, IntConst 0, IntConst 1))))
 
+let%test "test_parse_cmd_12" = test_parse_cmd
+  "x = x / 2;" 
+  (Assign ("x", Div(Var "x", IntConst 2)))
+
+let%test "test_parse_cmd_13" = test_parse_cmd
+  "x = 100 / 2 * 5;" 
+  (Assign ("x", Mul(Div(IntConst 100, IntConst 2), IntConst 5)))
+
+let%test "test_parse_cmd_14" = test_parse_cmd
+  "x = 100 / 2 / 5;" 
+  (Assign ("x", Div(Div(IntConst 100, IntConst 2), IntConst 5)))
+
+let%test "test_parse_cmd_15" = test_parse_cmd
+  "x = 100 * 2 / 5;" 
+  (Assign ("x", Div(Mul(IntConst 100, IntConst 2), IntConst 5)))
+
 let%test "test_parse_contract_1" = try 
   let _ = parse_contract
     "contract C {

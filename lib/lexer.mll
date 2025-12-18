@@ -34,6 +34,7 @@ rule read_token =
   | "+" { PLUS }
   | "-" { MINUS }
   | "*" { MUL }  
+  | "/" { DIV }  
   | "==" { EQ }
   | "!=" { NEQ }
   | "<=" { LEQ }  
