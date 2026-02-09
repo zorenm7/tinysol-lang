@@ -2,13 +2,26 @@ open Ast
 open Sysstate
 open Utils
 
-
 (******************************************************************************)
 (*                      Small-step semantics of expressions                   *)
 (******************************************************************************)
 
 exception TypeError of string
 exception NoRuleApplies
+
+(* Funzione helper per convertire la mutabilità da AST a intero *)
+let mutability_to_int = function
+  | Ast.Pure -> 2
+  | Ast.View -> 1
+  | _ -> 0 (* Payable o NonPayable *)
+
+(* Funzione helper per leggere la mutabilità corrente dallo stack *)
+let get_current_mutability (st : sysstate) : int =
+  try
+    match lookup_var ".mutability" st with
+    | Some (Uint n) -> n
+    | _ -> 0 (* Default: Mutable *)
+  with _ -> 0
 
 let rec step_expr (e,st) = match e with
   | e when is_val e -> raise NoRuleApplies
@@ -249,11 +262,21 @@ let rec step_expr (e,st) = match e with
     let to_state  = 
       { (st.accounts txto) with balance = (st.accounts txto).balance + txvalue } in 
     let fdecl = Option.get (find_fun_in_sysstate st txto f) in  
+
+    let intrinsic_mut = match fdecl with 
+      | Proc(_,_,_,_,m,_) -> mutability_to_int m
+      | Constr(_,_,m) -> mutability_to_int m 
+    in
+    let caller_mut = get_current_mutability st in
+    let effective_mut = if caller_mut > intrinsic_mut then caller_mut else intrinsic_mut in
+
     (* setup new callstack frame *)
     let xl = get_var_decls_from_fun fdecl in
     let xl',vl' =
+      { ty=VarT(UintBT); name=".mutability" } ::
       { ty=VarT(AddrBT false); name="msg.sender"; } :: 
       { ty=VarT(UintBT); name="msg.value"; } :: xl,
+      Uint effective_mut ::
       Addr txfrom :: 
       Uint txvalue :: txargs
     in
@@ -316,6 +339,14 @@ and step_cmd = function
     | Skip -> St st
 
     | Assign(x,e) when is_val e -> 
+
+      let mut = get_current_mutability st in
+      (* Controlla se la variabile è locale (se esiste nello stack locale) *)
+      let is_local = Option.is_some (lookup_locals x (List.hd st.callstack).locals) in
+        
+      if (mut >= 1) && (not is_local) then 
+        Reverted "Cannot modify state in view/pure function"
+      else
         St (update_var st x (exprval_of_expr_typechecked e (type_of_var x st)))
         
     | Assign(x,e) -> 
@@ -324,7 +355,14 @@ and step_cmd = function
     | Decons(_) -> failwith "TODO: multiple return values"
 
     | MapW(x,ek,ev) when is_val ek && is_val ev ->
+      let mut = get_current_mutability st in
+      (* Controlla se la variabile è locale (se esiste nello stack locale) *)
+      let is_local = Option.is_some (lookup_locals x (List.hd st.callstack).locals) in
+      if (mut >= 1) && (not is_local) then 
+        Reverted "Cannot modify state in view/pure function"
+      else
         St (update_map st x (exprval_of_expr ek) (exprval_of_expr ev))
+
     | MapW(x,ek,ev) when is_val ek -> 
       let (ev', st') = step_expr (ev, st) in 
       CmdSt(MapW(x,ek,ev'), st')
@@ -347,6 +385,7 @@ and step_cmd = function
         CmdSt(If(e',c1,c2), st')
 
     | Send(ercv,eamt) when is_val ercv && is_val eamt -> 
+      if get_current_mutability st >= 1 then Reverted "Cannot send ether in view/pure function" else
         let rcv = addr_of_expr ercv in 
         let amt = int_of_expr eamt in
         let from = (List.hd st.callstack).callee in 
@@ -417,11 +456,19 @@ and step_cmd = function
         let to_state  = 
           { (st.accounts txto) with balance = (st.accounts txto).balance + txvalue } in 
         let fdecl = Option.get (find_fun_in_sysstate st txto f) in  
+        let intrinsic_mut = match fdecl with
+        | Proc (_,_,_,_,m,_) -> mutability_to_int m
+        | Constr(_,_,m) -> mutability_to_int m
+        in
+        let caller_mut = get_current_mutability st in
+        let effective_mut = if caller_mut > intrinsic_mut then caller_mut else intrinsic_mut in
         (* setup new stack frame TODO *)
         let xl = get_var_decls_from_fun fdecl in
         let xl',vl' =
+          { ty=VarT(UintBT); name=".mutability" } ::
           { ty=VarT(AddrBT false); name="msg.sender"; } :: 
           { ty=VarT(UintBT); name="msg.value"; } :: xl,
+          Uint effective_mut ::
           Addr txfrom :: 
           Uint txvalue :: txargs
         in
@@ -573,20 +620,24 @@ let exec_tx (n_steps : int) (tx: transaction) (st : sysstate) : (sysstate,string
         if m<>Payable && tx.txvalue>0 then 
             Error "sending ETH to a non-payable function"
         else
+          let init_mut = mutability_to_int m in
           let xl',vl' =
             if deploy then match tx.txargs with 
               _::al -> 
+              { ty=VarT(UintBT); name=".mutability" } ::
               { ty=VarT(AddrBT false); name="msg.sender"; } ::
               { ty=VarT(UintBT); name="msg.value"; } :: xl
               ,
+              Uint init_mut ::
               Addr tx.txsender :: 
               Uint tx.txvalue :: 
               al
               | _ -> assert(false) (* should never happen *)
             else
+              { ty=VarT(UintBT); name=".mutability" } ::
               { ty=VarT(AddrBT false); name="msg.sender"; } :: 
               { ty=VarT(UintBT); name="msg.value"; } :: xl,
-              Addr tx.txsender :: Uint tx.txvalue :: tx.txargs
+              Uint init_mut :: Addr tx.txsender :: Uint tx.txvalue :: tx.txargs
           in
           let fr' = { callee = tx.txto; locals = [bind_fargs_aargs xl' vl'] } in
           let st' = { accounts = st.accounts 

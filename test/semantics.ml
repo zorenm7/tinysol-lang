@@ -695,3 +695,99 @@ let%test "test_fun_20" = test_exec_fun
   }"
   ["0xA:0xD.g()"] 
   [("0xC","this.balance==100"); ("0xD","this.balance==0")]
+
+(* --- Test per Issue 3: View Modifier Semantics --- *)
+
+let%test "test_issue3_assign" = test_exec_tx
+  "contract C {
+      int x;
+      function tryWrite() public view {  x = 10; }
+      function ping() public { x = 1; }
+  }"
+  [
+    "0xA:0xC.ping()";      (* ping va a buon fine*)
+    "0xA:0xC.tryWrite()"   (* prova la funzione tryWrite() illegale *)
+  ] 
+  [
+    "x==1"                 (* se tryWrite ha fallito (revert), x deve essere rimasto 1 (dal ping) *)
+  ]
+
+let%test "test_issue3_nested_call" = test_exec_tx
+  "contract C {
+      int x;
+      
+      // Funzione ausiliaria che prova a scrivere (non è view)
+      function g() public { 
+          x = 10; 
+      }
+
+      // Funzione VIEW che chiama g()
+      // Questo deve fallire perché f è view e non può chiamare funzioni che scrivono
+      function f() public view { 
+          this.g(); 
+      }
+  }"
+  ["0xA:0xC.f()"] (* chiamo f, che chiama g *)
+  ["x==0"]        (* se f ha fallito (revert), x deve essere rimasto 0 *)
+
+let%test "test_issue3_map" = test_exec_tx
+  "contract C {
+  mapping(uint => uint) m;
+
+  function map() public view {
+   m[1] = 5;
+  }
+  }"
+  ["0xA:0xC.map()"]
+  ["m[1]==0"]
+
+let%test "test_issue3_send" = test_exec_tx
+  "contract C {
+    function deposit() public payable {}
+
+    function send() public view {
+      msg.sender.transfer(1);
+    }
+  }"
+  [
+    "0xA:0xC.deposit{value:10}()"; (* balance inziale pari a 10 *)
+    "0xA:0xC.send()"
+  ]
+  ["this.balance == 10"]
+  
+let%test "test_issue3_locals" = test_exec_tx
+"contract C {
+  function f() public view { int x; x = 1; return x;}
+}"
+["0xA:0xC.f()"]
+["true"]
+
+let%test "issue3_external_propagation" = test_exec_fun
+  (* contratto 1 *)
+  "contract Server { 
+      int x; 
+      
+      function setX() public {     // setX non è view quindi può scrivere
+          x = 99; 
+      } 
+  }"
+  
+  (* contratto 2 *)
+  "contract Client { 
+      Server s; 
+      
+      constructor() { 
+          s = \"0xC\";          // si collega al contratto 1
+      } 
+      
+      function attack() public view {           // funzione view, questa è la restrizione iniziale
+          s.setX();                             // prova a chiamare una funzione che scrive
+      } 
+  }"
+  
+  [
+   "0xA:0xD.attack()" 
+  ]
+  [
+   ("0xC", "x==0")   
+  ]
