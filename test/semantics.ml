@@ -696,6 +696,80 @@ let%test "test_fun_20" = test_exec_fun
   ["0xA:0xD.g()"] 
   [("0xC","this.balance==100"); ("0xD","this.balance==0")]
 
+(* --- Test per Issue 10: Semantics of functions returning multiple values --- *)
+
+(* Test 1: destrutturazione base (assegna a variabili locali e aggiorna lo stato partendo da valori non nulli) *)
+let%test "test_issue10_base" = test_exec_tx
+  "contract C {
+      int x = 5;
+      bool b = true;
+
+      function f() public view returns (int,bool) { 
+          return(x,b); 
+      }
+
+      function g() public { 
+          int y; 
+          bool z; 
+          (y,z) = this.f(); 
+          x = x + y; 
+          b = !z; 
+      }
+  }"
+  [
+    "0xA:0xC.g()"; 
+  ] 
+  [
+    "x==10";        (* prima era 5, poi somma se stesso: 5 + 5 = 10 *)
+    "b==false"      (* prima era true, b diventa !true = false *)
+  ]
+
+(* Test 2: assegnamento con omissione (ignora il valore centrale della tupla senza sfasare le altre variabili) *)
+let%test "test_issue10_omission" = test_exec_tx
+  "contract C {
+      int a;
+      int c;
+
+      function f() public view returns (int, int, int) { 
+          return (10, 20, 30); 
+      }
+
+      function g() public { 
+          // ignoriamo il secondo valore (20)
+          (a, , c) = this.f(); 
+      }
+  }"
+  [
+    "0xA:0xC.g()"; 
+  ] 
+  [
+    "a==10";
+    "c==30" 
+  ]
+
+(* Test 3: destrutturazione su variabili di stato (sovrascrive direttamente le variabili globali senza passare per quelle locali) *)
+let%test "test_issue10_state_vars" = test_exec_tx
+  "contract C {
+      int x = 1;
+      int y = 2;
+
+      function f() public view returns (int, int) { 
+          return (99, 100); 
+      }
+
+      function g() public { 
+          // assegna direttamente alle variabili di stato
+          (x, y) = this.f(); 
+      }
+  }"
+  [
+    "0xA:0xC.g()"; 
+  ] 
+  [
+    "x==99";
+    "y==100" 
+  ]
+
 (* --- Test per Issue 3: View Modifier Semantics --- *)
 
 let%test "test_issue3_assign" = test_exec_tx

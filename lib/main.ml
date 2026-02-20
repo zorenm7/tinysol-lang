@@ -352,7 +352,28 @@ and step_cmd = function
     | Assign(x,e) -> 
       let (e', st') = step_expr (e, st) in CmdSt(Assign(x,e'), st')
 
-    | Decons(_) -> failwith "TODO: multiple return values"
+    | Decons(xl, ExecFunCall(c)) ->
+        (match step_cmd (CmdSt(c,st)) with
+         | Returned vl ->
+           if List.length xl <> List.length vl then
+             failwith "Decons: length mismatch between variables and return values"
+           else
+             let st' = List.fold_left2 (fun acc_st var_opt value ->
+               match var_opt with
+               | None -> acc_st
+               | Some x -> 
+                   update_var acc_st x value
+             ) (pop_callstack st) xl vl in
+             St st'
+             
+         | Reverted s -> Reverted s
+         | St _ -> failwith "function terminated without return"
+         | CmdSt(c', st') -> CmdSt(Decons(xl, ExecFunCall(c')), st')
+        )
+
+    | Decons(xl, e) ->
+      let (e', st') = step_expr (e, st) in
+      CmdSt(Decons(xl, e'), st')
 
     | MapW(x,ek,ev) when is_val ek && is_val ev ->
       let mut = get_current_mutability st in
@@ -414,9 +435,8 @@ and step_cmd = function
       let (e', st') = step_expr (e, st) in CmdSt(Req(e'), st')
 
     | Return(el) when List.for_all is_val el -> Returned (List.map exprval_of_expr el) 
-    | Return(el) -> (match el with
-      | [e] -> let (e', st') = step_expr (e, st) in CmdSt(Return([e']), st')
-      | _ -> failwith "TODO: multiple return values not supported")
+
+    | Return(el) -> let (el', st') = step_expr_list (el, st) in CmdSt(Return(el'), st')
     
     | Block(vdl,c) ->
         let r' = List.fold_left (fun acc vd ->

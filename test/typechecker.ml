@@ -586,3 +586,74 @@ let%test "test_typecheck_enum_6" = test_typecheck
   "contract C { enum E1 {A1,B1} enum E2 {A2,B2} enum E1 {A1,B1} E1 s; function f() public { s = E1.A1; } }"
   false
 
+(* Issue 12: gestione ritorni multipli e assegnazioni tramite destrutturazione *)
+
+(* Test 1: destrutturazione standard con tipi e numero di parametri corretti *)
+let%test "test_typecheck_decons_1" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { return(x,b); }
+    function g() public { int w; bool z; (w,z) = this.f(); x = w; b = z; }
+  }"
+  true
+
+(* Test 2: errore per numero errato di variabili *)
+let%test "test_typecheck_decons_2" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { return(x,b); }
+    function g() public { int w; int y; bool z; (w,y,z) = this.f(); x += y; b = !z; }
+  }"
+  false
+
+(* Test 3: errore per mismatch di tipo *)
+let%test "test_typecheck_decons_3" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { return(x,b); }
+    function g() public { bool y; bool z; (y,z) = this.f(); }
+  }"
+  false
+
+(* Test 4: verifica dell'assegnazione parziale (ignora il secondo valore di ritorno) *)
+let%test "test_typecheck_decons_4" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { return(x,b); }
+    function g() public { int w; (w,) = this.f(); x = w; }
+  }"
+  true
+
+(* Test 5: errore di arità nel return (la funzione promette 2 valori ma ne restituisce 3) *)
+let%test "test_typecheck_return_1" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { 
+        return(x, b, x); // ERRORE: 3 espressioni invece di 2
+    }
+    function g() public { int w; bool z; (w,z) = this.f(); }
+  }"
+  false
+
+(* Test 6: errore di tipo nel return (la funzione promette (int, bool) ma restituisce (bool, int)) *)
+let%test "test_typecheck_return_2" = test_typecheck
+  "contract C {
+    int x;
+    bool b;
+
+    function f() public view returns (int,bool) { 
+        return(b, x); // ERRORE: tipi invertiti rispetto alla firma
+    }
+    function g() public { int w; bool z; (w,z) = this.f(); }
+  }"
+  false

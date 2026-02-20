@@ -76,6 +76,13 @@ exception EnumDupName of ide
 exception EnumDupOption of ide * ide
 exception MapInLocalDecl of ide * ide
 
+exception DeconsCountMismatch of ide * int * int 
+exception DeconsTypeMismatch of ide * int * exprtype * exprtype 
+exception DeconsNotFunCall of ide * expr
+exception FunctionNotFound of ide * ide
+exception ReturnCountMismatch of ide * int * int 
+exception ReturnTypeMismatch of ide * int * exprtype * exprtype 
+
 let logfun f s = "(" ^ f ^ ")\t" ^ s 
 
 (* Prettyprinting of typechecker errors *)
@@ -94,7 +101,15 @@ let string_of_typecheck_error = function
 | EnumOptionNotFound (f,x,o) -> logfun f "enum option " ^ o ^ " is not found in enum " ^ x
 | EnumDupName x -> "enum " ^ x ^ " is declared multiple times"
 | EnumDupOption (x,o) -> "enum option " ^ o ^ " is declared multiple times in enum " ^ x
-| MapInLocalDecl (f,x) -> logfun f "mapping " ^ x ^ " not admitted in local declaration" 
+| MapInLocalDecl (f,x) -> logfun f "mapping " ^ x ^ " not admitted in local declaration"
+
+| DeconsCountMismatch (f,expected,actual) -> logfun f "destructuring assignment expects " ^ string_of_int expected ^ " values but got " ^ string_of_int actual
+| DeconsTypeMismatch (f,pos,expected,actual) -> logfun f "position " ^ string_of_int (pos+1) ^ " in destructuring assignment expects type " ^ string_of_exprtype expected ^ " but got " ^ string_of_exprtype actual
+| DeconsNotFunCall (f, e) -> logfun f "right side of destructuring assignment must be a function call, but got: " ^ string_of_expr e
+| FunctionNotFound (obj_name, fname) -> "function " ^ fname ^ " is not found in contract " ^ obj_name
+| ReturnCountMismatch (f,expected,actual) -> logfun f "return statement returns " ^ string_of_int actual ^ " values but function expects " ^ string_of_int expected
+| ReturnTypeMismatch (f,pos,expected,actual) -> logfun f "position " ^ string_of_int (pos+1) ^ " in return statement expects type " ^ string_of_exprtype expected ^ " but got " ^ string_of_exprtype actual
+
 | ex -> Printexc.to_string ex
 
 let exprtype_of_decltype = function
@@ -392,7 +407,18 @@ let typecheck_local_decls (f : ide) (vdl : local_var_decl list) = List.fold_left
   (Ok ())
   vdl
 
-let rec typecheck_cmd (f : ide) (edl : enum_decl list) (vdl : all_var_decls) = function 
+(* get_return_types: extract the return types from a function declaration *)
+let get_return_types (fdl : fun_decl list) (fname : ide) : base_type list option =
+  List.fold_left
+    (fun acc fd -> match acc with
+      | Some _ -> acc
+      | None -> match fd with
+        | Proc (f,_,_,_,_,return_types) when f = fname -> Some return_types
+        | _ -> None)
+    None
+    fdl
+
+let rec typecheck_cmd (f : ide) (edl : enum_decl list) (fdl : fun_decl list) (vdl : all_var_decls) = function 
     | Skip -> Ok ()
 
     | Assign(x,e) -> 
@@ -404,8 +430,54 @@ let rec typecheck_cmd (f : ide) (edl : enum_decl list) (vdl : all_var_decls) = f
           | res1,res2 -> typeckeck_result_from_expr_result (res1 >>+ res2)
         )
 
-    | Decons(_) -> failwith "TODO: multiple return values"
+    | Decons(vars, expr) ->
+      (match expr with
+      | FunCall(obj, fname, value, args) ->
+          let check_obj   = typecheck_expr f edl vdl obj in
+          let check_value = typecheck_expr f edl vdl value in
+          let check_args =
+            List.fold_left
+              (fun acc a ->
+                  acc >> typeckeck_result_from_expr_result (typecheck_expr f edl vdl a))
+              (Ok ())
+              args
+          in
 
+          typeckeck_result_from_expr_result check_obj >>
+          typeckeck_result_from_expr_result check_value >>
+          check_args >>
+
+          (match get_return_types fdl fname with
+            | None -> Error [FunctionNotFound (string_of_expr obj, fname)]
+            | Some ret_types ->
+                let n_expected = List.length vars in
+                let n_actual = List.length ret_types in
+
+                if n_expected <> n_actual then
+                  Error [DeconsCountMismatch (f, n_expected, n_actual)]
+                else
+                  let actual_exprtypes = List.map exprtype_of_decltype ret_types in
+
+                  let rec check_types i vs ts =
+                    match vs, ts with
+                    | [], [] -> Ok ()
+                    | None :: vs', _ :: ts' ->
+                        check_types (i+1) vs' ts'
+                    | Some x :: vs', t_actual :: ts' ->
+                        (match typecheck_expr f edl vdl (Var x) with
+                        | Error err -> Error err 
+                        | Ok t_expected ->
+                            if subtype t_actual t_expected then 
+                              check_types (i+1) vs' ts'
+                            else
+                              Error [DeconsTypeMismatch (f, i, t_expected, t_actual)])
+                    | _ -> assert false
+                  in
+                  check_types 0 vars actual_exprtypes
+          )
+      | _ -> Error [DeconsNotFunCall (f, expr)]
+      )
+    
     | MapW(x,ek,ev) ->  
         (match typecheck_expr f edl vdl (Var x),
                typecheck_expr f edl vdl ek,
@@ -418,17 +490,17 @@ let rec typecheck_cmd (f : ide) (edl : enum_decl list) (vdl : all_var_decls) = f
           | res1,res2,res3 -> typeckeck_result_from_expr_result (res1 >>+ res2 >>+ res3))
 
     | Seq(c1,c2) -> 
-        typecheck_cmd f edl vdl c1
+        typecheck_cmd f edl fdl vdl c1
         >>
-        typecheck_cmd f edl vdl c2
+        typecheck_cmd f edl fdl vdl c2
 
     | If(e,c1,c2) -> (match typecheck_expr f edl vdl e with
-          | Ok(BoolConstET true)  -> typecheck_cmd f edl vdl c1
-          | Ok(BoolConstET false) -> typecheck_cmd f edl vdl c2
+          | Ok(BoolConstET true)  -> typecheck_cmd f edl fdl vdl c1
+          | Ok(BoolConstET false) -> typecheck_cmd f edl fdl vdl c2
           | Ok(BoolET) -> 
-              typecheck_cmd f edl vdl c1
+              typecheck_cmd f edl fdl vdl c1
               >>
-              typecheck_cmd f edl vdl c2
+              typecheck_cmd f edl fdl vdl c2
           | Ok(te) -> Error [TypeError (f,e,te,BoolET)]
           | res -> typeckeck_result_from_expr_result res)
 
@@ -451,7 +523,7 @@ let rec typecheck_cmd (f : ide) (edl : enum_decl list) (vdl : all_var_decls) = f
         typecheck_local_decls f lvdl
         >>
         let vdl' = push_local_decls vdl lvdl in
-        typecheck_cmd f edl vdl' c
+        typecheck_cmd f edl fdl vdl' c
 
     | ExecBlock(_) -> assert(false) (* should not happen at static time *)
 
@@ -461,22 +533,49 @@ let rec typecheck_cmd (f : ide) (edl : enum_decl list) (vdl : all_var_decls) = f
 
     | ExecProcCall(_) -> assert(false) (* should not happen at static time *)
 
-    | Return(_) -> failwith "TODO: Return"
+    | Return(exprs) ->
+      let ret_types_opt = get_return_types fdl f in
+      let expected_ret_types = match ret_types_opt with
+        | Some rt -> rt
+        | None -> [] 
+      in
+      
+      let n_expected = List.length expected_ret_types in
+      let n_actual   = List.length exprs in
 
+      if n_expected <> n_actual then
+        Error [ReturnCountMismatch (f, n_expected, n_actual)]
+      else
+        let expected_exprtypes = List.map exprtype_of_decltype expected_ret_types in
 
-let typecheck_fun (edl : enum_decl list) (vdl : var_decl list) = function
+        let rec check_types i es ts =
+          match es, ts with
+          | [], [] -> Ok ()
+          | e :: es', t_expected :: ts' ->
+              (match typecheck_expr f edl vdl e with
+                | Error err -> Error err
+                | Ok t_actual ->
+                    if subtype t_actual t_expected then
+                      check_types (i+1) es' ts'
+                    else
+                      Error [ReturnTypeMismatch (f, i, t_expected, t_actual)])
+          | _ -> assert false
+        in
+        check_types 0 exprs expected_exprtypes
+
+let typecheck_fun (edl : enum_decl list) (vdl : var_decl list) (fdl : fun_decl list) = function
   | Constr (al,c,_) ->
       no_dup_local_var_decls "constructor" al
       >>
       typecheck_local_decls "constructor" al
       >> 
-      typecheck_cmd "constructor" edl (merge_var_decls vdl al) c
+      typecheck_cmd "constructor" edl fdl (merge_var_decls vdl al) c
   | Proc (f,al,c,_,__,_) ->
       no_dup_local_var_decls f al
       >> 
       typecheck_local_decls f al
       >>
-      typecheck_cmd f edl (merge_var_decls vdl al) c
+      typecheck_cmd f edl fdl (merge_var_decls vdl al) c
 
 (* dup_first: finds the first duplicate in a list *)
 let rec dup_first (l : 'a list) : 'a option = match l with 
@@ -510,7 +609,7 @@ let typecheck_contract (Contract(_,edl,vdl,fdl)) : typecheck_result =
   (* no multiply declared functions *)
   no_dup_fun_decls fdl
   >>
-  List.fold_left (fun acc fd -> acc >> typecheck_fun edl vdl fd) (Ok ()) fdl  
+  List.fold_left (fun acc fd -> acc >> typecheck_fun edl vdl fdl fd) (Ok ()) fdl  
 
 
 let string_of_typecheck_result = function
